@@ -47,7 +47,6 @@ jobs:
           mkdir -p release/$PLUGIN_NAME/py_modules
           mkdir -p release/$PLUGIN_NAME/frontend
           mkdir -p release/$PLUGIN_NAME/bin
-          mkdir -p release/$PLUGIN_NAME/defaults
 
           # Copy files
           cp dist/index.js release/$PLUGIN_NAME/dist/
@@ -60,11 +59,6 @@ jobs:
           # Copy directories
           cp -r py_modules/* release/$PLUGIN_NAME/py_modules/
           cp -r frontend/* release/$PLUGIN_NAME/frontend/
-          
-          # Copy defaults if exists
-          if [ -d "defaults" ]; then
-            cp -r defaults/* release/$PLUGIN_NAME/defaults/
-          fi
           
           # Copy binaries if they exist
           if [ -d "bin" ]; then
