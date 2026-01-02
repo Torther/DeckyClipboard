@@ -7,6 +7,6 @@
   "publish": {
     "tags": ["clipboard", "utility", "web"],
     "description": "Share clipboard between Steam Deck and other devices via web interface.",
-    "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
+    "image": "https://raw.githubusercontent.com/Torther/DeckyClipboard/refs/heads/main/img/01.jpg"
   }
 }
