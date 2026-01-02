@@ -1,11 +1,12 @@
 {
-  "name": "Example Plugin",
-  "author": "John Doe",
-  "flags": ["debug", "_root"],
+  "name": "Decky Clipboard",
+  "version": "1.0.0",
+  "author": "Torther",
+  "flags": ["root"],
   "api_version": 1,
   "publish": {
-    "tags": ["template", "root"],
-    "description": "Decky example plugin.",
+    "tags": ["clipboard", "utility", "web"],
+    "description": "Share clipboard between Steam Deck and other devices via web interface.",
     "image": "https://opengraph.githubassets.com/1/SteamDeckHomebrew/PluginLoader"
   }
 }

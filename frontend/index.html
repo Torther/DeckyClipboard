@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Decky Clipboard</title>
+    <style>
+        :root {
+            --bg-color: #232729;
+            --sidebar-bg: #232729;
+            --content-bg: #0f151a;
+            --card-bg: #1b2024;
+            --input-bg: #090e11;
+            --text-primary: #c2c6c9;
+            --text-secondary: #767a7d;
+            
+            --btn-bg: #32373c;
+            --btn-hover: #3e444a;
+            --btn-active: #e6e9ec;
+            --btn-active-text: #1a1f24;
+            
+            --nav-hover: #2d3336;
+            --nav-active: #404547;
+            
+            --border-radius: 4px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body { 
+            font-family: "Motiva Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background-color: var(--sidebar-bg);
+            display: flex;
+            flex-direction: column;
+            padding-top: 20px;
+            padding-bottom: 20px;
+            border-right: 1px solid #1e242e;
+            flex-shrink: 0;
+        }
+
+        .logo {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 30px;
+            padding: 0 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+        }
+
+        .nav-items {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+
+        .nav-item {
+            padding: 16px 24px;
+            margin: 0;
+            border-radius: 0;
+            cursor: pointer;
+            color: var(--text-primary);
+            transition: all 0.2s;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-item:hover {
+            background-color: var(--nav-hover);
+        }
+
+        .nav-item.active {
+            background-color: var(--nav-active);
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            background-color: var(--content-bg);
+            overflow-y: auto;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .page-header {
+            margin-bottom: 20px;
+        }
+
+        .page-title {
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Cards */
+        .card {
+            background-color: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.03);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            color: var(--text-primary);
+        }
+
+        .card-body {
+            position: relative;
+        }
+
+        /* Inputs & Textareas */
+        .input-group {
+            background-color: var(--input-bg);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            border: 1px solid #2a3035;
+            transition: border-color 0.2s;
+        }
+
+        .input-group:focus-within {
+            border-color: var(--text-primary);
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            background: transparent;
+            border: none;
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 14px;
+            resize: vertical;
+            outline: none;
+        }
+
+        /* Content Display */
+        .content-display {
+            background-color: var(--input-bg);
+            border-radius: var(--border-radius);
+            padding: 16px;
+            min-height: 60px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-primary);
+        }
+
+        .content-display.empty {
+            color: var(--text-secondary);
+            font-style: italic;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .content-display.has-image {
+            padding: 0;
+            background-color: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            max-height: none;
+        }
+
+        .image-preview {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: var(--border-radius);
+            display: block;
+            margin: 0 auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        /* Buttons */
+        .btn {
+            padding: 10px 20px;
+            border-radius: var(--border-radius);
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.1s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            background-color: var(--btn-bg);
+            color: var(--text-primary);
+        }
+
+        .btn:hover {
+            background-color: var(--btn-hover);
+        }
+
+        .btn:active {
+            background-color: var(--btn-active);
+            color: var(--btn-active-text);
+        }
+
+        .btn-icon {
+            padding: 8px;
+            border-radius: 4px;
+            background: transparent;
+            color: var(--text-primary);
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .btn-icon:hover {
+            background-color: var(--btn-hover);
+        }
+        
+        .btn-icon:active {
+            background-color: var(--btn-active);
+            color: var(--btn-active-text);
+        }
+
+        .actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            justify-content: flex-end;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            body {
+                flex-direction: column;
+                overflow-y: auto;
+            }
+
+            .sidebar {
+                width: 100%;
+                padding: 0;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                border-right: none;
+                border-bottom: 1px solid #1e242e;
+                height: 60px;
+            }
+
+            .logo { margin-bottom: 0; padding: 0 16px; }
+            
+            .nav-items { 
+                flex-direction: row; 
+                width: auto;
+                height: 100%;
+            }
+            
+            .nav-item {
+                height: 100%;
+                padding: 0 16px;
+                display: flex;
+                align-items: center;
+            }
+            
+            .main-content {
+                padding: 20px;
+                overflow-y: visible;
+            }
+        }
+
+        /* Utilities */
+        .hidden { display: none; }
+        .spin { animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background-color: var(--card-bg);
+            color: var(--text-primary);
+            padding: 12px 24px;
+            border-radius: var(--border-radius);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transform: translateY(100px);
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+            border-left: 4px solid var(--text-primary);
+        }
+
+        .toast.show { transform: translateY(0); }
+        .toast.success { border-left-color: #2ed573; }
+        .toast.error { border-left-color: #ff4757; }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3d4450; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5362; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo" id="logo-text">
+            Decky Clipboard
+        </div>
+        <div class="nav-items">
+            <div class="nav-item active" id="nav-clipboard">
+                Clipboard
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content" id="page-clipboard">
+        <div class="page-header">
+            <div class="page-title" id="page-title">Clipboard Manager</div>
+            <div class="page-subtitle" id="page-subtitle">Sync content between your devices and Steam Deck</div>
+        </div>
+
+        <!-- From Deck -->
+        <div class="card">
+            <div class="card-header">
+                <span id="header-from-deck">From Steam Deck</span>
+                <button class="btn-icon" onclick="refreshFromDeck()" id="refresh-btn" title="Refresh">
+                    Refresh
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="content-display" id="from-deck-content">
+                    (Loading...)
+                </div>
+                <div class="actions">
+                    <button class="btn" onclick="copyFromDeck()" id="copy-btn">
+                        Copy to Device
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- To Deck -->
+        <div class="card">
+            <div class="card-header">
+                <span id="header-to-deck">To Steam Deck</span>
+            </div>
+            <div class="card-body">
+                <div class="input-group" id="text-input-container">
+                    <textarea id="to-deck-textarea" placeholder="Type text or paste image here..."></textarea>
+                </div>
+
+                <div id="image-preview-container" class="hidden" style="background: var(--input-bg); padding: 16px; border-radius: var(--border-radius); text-align: center; margin-bottom: 16px; border: 1px solid #2a3035;">
+                    <img id="to-deck-image-preview" style="max-width: 100%; max-height: 300px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+                    <div id="image-ready-text" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">Image ready to send</div>
+                </div>
+
+                <div class="actions">
+                    <button class="btn" onclick="clearToDeck()" id="clear-btn">
+                        Clear
+                    </button>
+                    <button class="btn" onclick="sendToDeck()" id="send-btn">
+                        Send to Deck
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">
+        <span id="toast-icon">✓</span>
+        <span id="toast-message">Operation successful</span>
+    </div>
+
+    <script src="i18n.js"></script>
+    <script>
+        let deckClipboard = '';
+        let deckClipboardType = 'text/plain';
+        let pendingImage = null;
+        let pendingImageType = null;
+        let isRefreshing = false;
+        let autoRefreshInterval = null;
+
+        // UI Updates
+        function updateUI() {
+            const t = i18n.t();
+            
+            document.getElementById('nav-clipboard').textContent = t.menuClipboard;
+            document.getElementById('page-title').textContent = t.clipboardManager;
+            document.getElementById('page-subtitle').textContent = t.syncHint;
+            
+            document.getElementById('header-from-deck').textContent = t.fromDeck;
+            
+            const refreshBtn = document.getElementById('refresh-btn');
+            if (!isRefreshing) refreshBtn.textContent = t.refresh;
+            refreshBtn.title = t.refresh;
+            
+            document.getElementById('copy-btn').textContent = t.copyToDevice;
+            
+            document.getElementById('header-to-deck').textContent = t.toDeck;
+            document.getElementById('to-deck-textarea').placeholder = t.placeholder;
+            document.getElementById('image-ready-text').textContent = t.imageReady;
+            
+            document.getElementById('clear-btn').textContent = t.clear;
+            
+            const sendBtn = document.getElementById('send-btn');
+            if (!sendBtn.disabled) sendBtn.textContent = t.sendToDeck;
+        }
+
+        function b64toBlob(b64Data, contentType='', sliceSize=512) {
+            const byteCharacters = atob(b64Data);
+            const byteArrays = [];
+
+            for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+                const slice = byteCharacters.slice(offset, offset + sliceSize);
+                const byteNumbers = new Array(slice.length);
+                for (let i = 0; i < slice.length; i++) {
+                    byteNumbers[i] = slice.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                byteArrays.push(byteArray);
+            }
+
+            const blob = new Blob(byteArrays, {type: contentType});
+            return blob;
+        }
+
+        function processImageFile(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast(i18n.t().notImage, 'error');
+                return;
+            }
+
+            // Check file type (MIME) first
+            if (file.type === 'image/gif') {
+                showToast(i18n.t().gifNotSupported, 'error');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const result = e.target.result;
+                const base64 = result.split(',')[1]; // Remove data URL prefix
+                
+                // Check for GIF signature in base64 (R0lGOD)
+                // This catches GIFs that might be mislabeled as other types
+                if (base64.startsWith('R0lGOD')) {
+                    showToast(i18n.t().gifNotSupported, 'error');
+                    return;
+                }
+
+                pendingImage = base64;
+                pendingImageType = file.type;
+                
+                // Show preview
+                document.getElementById('text-input-container').classList.add('hidden');
+                document.getElementById('image-preview-container').classList.remove('hidden');
+                document.getElementById('to-deck-image-preview').src = result;
+                document.getElementById('to-deck-textarea').value = ''; // Clear text
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearToDeck() {
+            document.getElementById('to-deck-textarea').value = '';
+            pendingImage = null;
+            pendingImageType = null;
+            document.getElementById('text-input-container').classList.remove('hidden');
+            document.getElementById('image-preview-container').classList.add('hidden');
+            document.getElementById('to-deck-image-preview').src = '';
+        }
+
+        function showToast(message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const msg = document.getElementById('toast-message');
+            const icon = document.getElementById('toast-icon');
+            
+            msg.textContent = message;
+            toast.className = 'toast show ' + type;
+            icon.textContent = type === 'success' ? '✓' : '✕';
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // API Interactions
+        async function refreshFromDeck() {
+            if (isRefreshing) return;
+            isRefreshing = true;
+            const btn = document.getElementById('refresh-btn');
+            btn.textContent = i18n.t().refreshing;
+            
+            try {
+                const response = await fetch('/api/clipboard');
+                const data = await response.json();
+                if (data.success) {
+                    displayContent(data.content, data.type);
+                }
+            } catch(e) {
+                console.error('Refresh failed', e);
+            } finally {
+                isRefreshing = false;
+                btn.textContent = i18n.t().refresh;
+            }
+        }
+
+        function displayContent(content, type) {
+            const container = document.getElementById('from-deck-content');
+            const copyBtn = document.getElementById('copy-btn');
+            deckClipboard = content;
+            deckClipboardType = type;
+            
+            container.innerHTML = '';
+            container.classList.remove('empty');
+            container.classList.remove('has-image');
+
+            if (!content) {
+                container.textContent = i18n.t().empty;
+                container.classList.add('empty');
+                copyBtn.style.display = 'none'; // Hide copy button if empty
+                return;
+            }
+
+            if (type && type.startsWith('image/')) {
+                container.classList.add('has-image');
+                const img = document.createElement('img');
+                img.src = 'data:' + type + ';base64,' + content;
+                img.className = 'image-preview';
+                container.appendChild(img);
+                copyBtn.style.display = 'none'; // Hide copy button for images
+            } else {
+                container.textContent = content;
+                copyBtn.style.display = 'inline-flex'; // Show copy button for text
+            }
+        }
+
+        async function sendToDeck() {
+            const btn = document.getElementById('send-btn');
+            const originalText = btn.textContent;
+            
+            let content = '';
+            let type = 'text/plain';
+            let isBase64 = false;
+
+            if (pendingImage) {
+                content = pendingImage;
+                type = pendingImageType;
+                isBase64 = true;
+            } else {
+                content = document.getElementById('to-deck-textarea').value;
+                if (!content) return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = i18n.t().sending;
+
+            try {
+                const response = await fetch('/api/clipboard', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        content: content,
+                        type: type,
+                        is_base64: isBase64
+                    })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showToast(i18n.t().sent);
+                    clearToDeck();
+                    // No need to refresh immediately, websocket will handle it if monitor picks it up
+                } else {
+                    showToast(i18n.t().error, 'error');
+                }
+            } catch(e) {
+                showToast(i18n.t().networkError, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = i18n.t().sendToDeck;
+            }
+        }
+
+        async function copyFromDeck() {
+            if (!deckClipboard) {
+                showToast(i18n.t().nothingToCopy, 'error');
+                return;
+            }
+
+            // Fallback for insecure contexts (HTTP) where navigator.clipboard is missing
+            if (!navigator.clipboard) {
+                if (deckClipboardType && deckClipboardType.startsWith('image/')) {
+                    showToast(i18n.t().httpsRequired, 'error');
+                    return;
+                }
+                
+                const textArea = document.createElement("textarea");
+                textArea.value = deckClipboard;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) showToast(i18n.t().copied);
+                    else showToast(i18n.t().error, 'error');
+                } catch (err) {
+                    showToast(i18n.t().error, 'error');
+                }
+                
+                document.body.removeChild(textArea);
+                return;
+            }
+
+            try {
+                if (deckClipboardType && deckClipboardType.startsWith('image/')) {
+                    const blob = b64toBlob(deckClipboard, deckClipboardType);
+                    await navigator.clipboard.write([
+                        new ClipboardItem({
+                            [deckClipboardType]: blob
+                        })
+                    ]);
+                    showToast(i18n.t().copied);
+                } else {
+                    await navigator.clipboard.writeText(deckClipboard);
+                    showToast(i18n.t().copied);
+                }
+            } catch (err) {
+                console.error(err);
+                showToast(i18n.t().error + ': ' + err.message, 'error');
+            }
+        }
+
+        let ws = null;
+        let wsReconnectTimeout = null;
+
+        function connectWebSocket() {
+            if (ws) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/api/ws';
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                // console.log('WebSocket connected');
+                // Initial fetch
+                refreshFromDeck();
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.success) {
+                        displayContent(data.content, data.type);
+                    }
+                } catch (e) {
+                    console.error('WebSocket message error', e);
+                }
+            };
+
+            ws.onclose = () => {
+                // console.log('WebSocket disconnected');
+                ws = null;
+                // Try to reconnect in 3 seconds
+                if (wsReconnectTimeout) clearTimeout(wsReconnectTimeout);
+                wsReconnectTimeout = setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error', error);
+                ws.close();
+            };
+        }
+
+        // Init
+        updateUI();
+        connectWebSocket();
+
+        // Paste handler
+        document.addEventListener('paste', (e) => {
+            const clipboardData = e.clipboardData || e.originalEvent.clipboardData;
+            const items = clipboardData.items;
+            
+            // 1. Check for image files
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const blob = item.getAsFile();
+                    processImageFile(blob);
+                    e.preventDefault(); // Prevent pasting into textarea if focused
+                    return;
+                }
+            }
+
+            // 2. Check for base64 image string in text
+            const pastedText = clipboardData.getData('text');
+            if (pastedText && pastedText.trim().startsWith('data:image/')) {
+                try {
+                    const parts = pastedText.trim().split(',');
+                    if (parts.length === 2) {
+                        const mimeMatch = parts[0].match(/:(.*?);/);
+                        if (mimeMatch) {
+                            const mimeType = mimeMatch[1];
+                            const b64Data = parts[1];
+                            
+                            const blob = b64toBlob(b64Data, mimeType);
+                            processImageFile(blob);
+                            e.preventDefault();
+                            return;
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error parsing pasted base64", err);
+                }
+            }
+        });
+
+        // Ctrl+Enter to send
+        document.getElementById('to-deck-textarea').addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                sendToDeck();
+            }
+        });
+    </script>
+</body>
+</html>
