@@ -1,0 +1,110 @@
+name: Build
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build_plugin:
+    name: Build Plugin
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: latest
+
+      - name: Setup Nodejs
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: pnpm
+
+      - name: Install package and build
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm build
+
+      - name: Collect files
+        run: |
+          PLUGIN_NAME="decky-clipboard"
+          mkdir -p release/$PLUGIN_NAME
+          
+          # Create directory structure
+          mkdir -p release/$PLUGIN_NAME/dist
+          mkdir -p release/$PLUGIN_NAME/py_modules
+          mkdir -p release/$PLUGIN_NAME/frontend
+          mkdir -p release/$PLUGIN_NAME/bin
+          mkdir -p release/$PLUGIN_NAME/defaults
+
+          # Copy files
+          cp dist/index.js release/$PLUGIN_NAME/dist/
+          cp package.json release/$PLUGIN_NAME/
+          cp plugin.json release/$PLUGIN_NAME/
+          cp main.py release/$PLUGIN_NAME/
+          cp LICENSE release/$PLUGIN_NAME/
+          cp README.md release/$PLUGIN_NAME/
+          
+          # Copy directories
+          cp -r py_modules/* release/$PLUGIN_NAME/py_modules/
+          cp -r frontend/* release/$PLUGIN_NAME/frontend/
+          
+          # Copy defaults if exists
+          if [ -d "defaults" ]; then
+            cp -r defaults/* release/$PLUGIN_NAME/defaults/
+          fi
+          
+          # Copy binaries if they exist
+          if [ -d "bin" ]; then
+            cp -r bin/* release/$PLUGIN_NAME/bin/
+          fi
+
+          # Set permissions
+          chmod -R 755 release/$PLUGIN_NAME
+
+          # Zip
+          cd release 
+          zip -r $PLUGIN_NAME.zip $PLUGIN_NAME
+          cd ..
+
+      - name: Publish artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: decky-clipboard-artifacts
+          path: |
+            ./release/decky-clipboard.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    needs: build_plugin
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Publish to Github release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./artifacts/decky-clipboard-artifacts/*
+          name: Release ${{ github.ref_name }}
+          draft: false
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref, 'pre') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
