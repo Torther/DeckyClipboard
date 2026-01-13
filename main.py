@@ -21,6 +21,8 @@ from clipboard import get_clipboard_data, set_clipboard_data, is_clipboard_avail
 
 
 # Get the path to frontend files and settings
+# Note: frontend files are stored in defaults/frontend during build,
+# but Decky CLI strips the "defaults" prefix when packaging, so runtime path is "frontend"
 FRONTEND_PATH = Path(__file__).parent / "frontend"
 SETTINGS_PATH = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "settings.json"
 

@@ -2,10 +2,10 @@ name: Build
 
 on:
   push:
-    branches: [ "main" ]
-    tags: [ "v*" ]
+    branches: ["main"]
+    tags: ["v*"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
       - name: Setup Nodejs
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: "20.x"
           cache: pnpm
 
       - name: Install package and build
@@ -41,7 +41,7 @@ jobs:
         run: |
           PLUGIN_NAME="decky-clipboard"
           mkdir -p release/$PLUGIN_NAME
-          
+
           # Create directory structure
           mkdir -p release/$PLUGIN_NAME/dist
           mkdir -p release/$PLUGIN_NAME/py_modules
@@ -55,11 +55,14 @@ jobs:
           cp main.py release/$PLUGIN_NAME/
           cp LICENSE release/$PLUGIN_NAME/
           cp README.md release/$PLUGIN_NAME/
-          
+
           # Copy directories
           cp -r py_modules/* release/$PLUGIN_NAME/py_modules/
-          cp -r frontend/* release/$PLUGIN_NAME/frontend/
-          
+
+          # Copy defaults contents (frontend is inside defaults/)
+          # Decky CLI strips "defaults" prefix, so defaults/frontend becomes frontend
+          cp -r defaults/* release/$PLUGIN_NAME/
+
           # Copy binaries if they exist
           if [ -d "bin" ]; then
             cp -r bin/* release/$PLUGIN_NAME/bin/

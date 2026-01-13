@@ -98,21 +98,6 @@ if (Test-Path "py_modules") {
     Write-Host "  + py_modules/" -ForegroundColor Green
 }
 
-# Copy frontend directory
-if (Test-Path "frontend") {
-    $frontendDst = Join-Path $PluginDir "frontend"
-    New-Item -ItemType Directory -Force -Path $frontendDst | Out-Null
-    Copy-Item -Recurse -Force "frontend\*" $frontendDst
-    # Convert all .js and .html files in frontend to Unix line endings
-    Get-ChildItem -Recurse $frontendDst -Filter "*.js" | ForEach-Object {
-        Convert-ToUnixLineEndings -FilePath $_.FullName
-    }
-    Get-ChildItem -Recurse $frontendDst -Filter "*.html" | ForEach-Object {
-        Convert-ToUnixLineEndings -FilePath $_.FullName
-    }
-    Write-Host "  + frontend/" -ForegroundColor Green
-}
-
 # Copy bin directory (bundled binaries like wl-copy, wl-paste)
 if (Test-Path "bin") {
     $binFiles = Get-ChildItem "bin" -File
@@ -126,11 +111,16 @@ if (Test-Path "bin") {
 }
 
 # Copy defaults directory if exists
+# Decky CLI strips the "defaults" prefix when packaging, so defaults/frontend becomes frontend
 if (Test-Path "defaults") {
     $defaultsContent = Get-ChildItem "defaults" -Exclude "defaults.txt"
     foreach ($item in $defaultsContent) {
         Copy-Item -Recurse -Force $item.FullName $PluginDir
-        Write-Host "  + defaults/$($item.Name)" -ForegroundColor Green
+        Write-Host "  + defaults/$($item.Name) -> $($item.Name)/" -ForegroundColor Green
+    }
+    # Convert all .js and .html files in copied defaults to Unix line endings
+    Get-ChildItem -Recurse $PluginDir -Include "*.js", "*.html" | ForEach-Object {
+        Convert-ToUnixLineEndings -FilePath $_.FullName
     }
 }
 
