@@ -4,7 +4,6 @@ import {
   DialogControlsSection,
   DialogControlsSectionHeader,
   ToggleField,
-  SliderField,
   TextField,
 } from "@decky/ui";
 import { callable, toaster } from "@decky/api";
@@ -17,11 +16,39 @@ interface Settings {
   max_history: number;
   port: number;
   enable_history: boolean;
-  monitor_interval: number;
 }
 
 const getSettings = callable<[], Settings>("get_settings");
-const saveSettings = callable<[settings: Partial<Settings>], { success: boolean }>("save_settings");
+const saveSettings = callable<
+  [settings: Partial<Settings>],
+  { success: boolean }
+>("save_settings");
+
+// Pre-defined styles to avoid re-creating objects on each render
+const settingsStyles = {
+  loadingContainer: {
+    textAlign: "center" as const,
+    padding: "20px",
+    color: "#888",
+  },
+  headerContainer: { display: "flex", alignItems: "center", gap: "8px" },
+  fieldContainer: {
+    padding: "10px 0",
+  },
+  fieldLabel: {
+    marginBottom: "6px",
+    fontSize: "13px",
+    color: "#b8c7d0",
+  },
+  fieldHint: {
+    fontSize: "11px",
+    color: "#666",
+    marginTop: "6px",
+    lineHeight: "1.4",
+  },
+  fieldInput: { width: "100%" },
+  sectionSpacer: { height: "4px" },
+} as const;
 
 export const Settings: FC = () => {
   const translations = t();
@@ -30,10 +57,13 @@ export const Settings: FC = () => {
     max_history: 20,
     port: 8765,
     enable_history: false,
-    monitor_interval: 5
   });
   const [loading, setLoading] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const settingsRef = useRef(settings);
+
+  // Keep ref in sync with state
+  settingsRef.current = settings;
 
   useEffect(() => {
     loadSettings();
@@ -56,36 +86,43 @@ export const Settings: FC = () => {
   };
 
   // Debounced save function - waits 500ms after last change before saving
-  const debouncedSave = useCallback((newSettings: Partial<Settings>, isPortChange: boolean = false) => {
-    // Update local state immediately for responsive UI
-    setSettings(prev => ({ ...prev, ...newSettings }));
-    
-    // Clear existing timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-    
-    // Set new timeout to save
-    saveTimeoutRef.current = setTimeout(async () => {
-      try {
-        const toSave = { ...settings, ...newSettings };
-        await saveSettings(toSave);
-        
-        if (isPortChange) {
+  const debouncedSave = useCallback(
+    (newSettings: Partial<Settings>, isPortChange: boolean = false) => {
+      // Update local state immediately for responsive UI
+      setSettings((prev) => ({ ...prev, ...newSettings }));
+
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // Set new timeout to save
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          const toSave = { ...settingsRef.current, ...newSettings };
+          await saveSettings(toSave);
+
+          if (isPortChange) {
+            const currentTranslations = t();
+            toaster.toast({
+              title: currentTranslations.serverSettings || "Server Settings",
+              body:
+                currentTranslations.portChangeHint ||
+                "Port changes will take effect after restarting the device.",
+            });
+          }
+        } catch (e) {
+          console.error("Failed to save settings:", e);
+          const currentTranslations = t();
           toaster.toast({
-            title: translations.serverSettings || "Server Settings",
-            body: translations.portChangeHint || "Port changes will take effect after restarting the device.",
+            title: currentTranslations.error || "Error",
+            body: String(e),
           });
         }
-      } catch (e) {
-        console.error("Failed to save settings:", e);
-        toaster.toast({
-          title: translations.error || "Error",
-          body: String(e),
-        });
-      }
-    }, 1000);
-  }, [settings, translations]);
+      }, 1000);
+    },
+    [],
+  ); // No dependencies - uses refs for latest values
 
   // Immediate save for toggle fields (no notification)
   const handleToggleSave = async (newSettings: Partial<Settings>) => {
@@ -102,7 +139,7 @@ export const Settings: FC = () => {
     return (
       <DialogBody>
         <DialogControlsSection>
-          <div style={{ textAlign: "center", padding: "20px", color: "#888" }}>
+          <div style={settingsStyles.loadingContainer}>
             {translations.loading}
           </div>
         </DialogControlsSection>
@@ -114,7 +151,7 @@ export const Settings: FC = () => {
     <DialogBody>
       <DialogControlsSection>
         <DialogControlsSectionHeader>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={settingsStyles.headerContainer}>
             <FaCog />
             {translations.serverSettings || "Server Settings"}
           </div>
@@ -127,8 +164,8 @@ export const Settings: FC = () => {
           onChange={(value) => handleToggleSave({ auto_start: value })}
         />
 
-        <div style={{ padding: "8px 0" }}>
-          <div style={{ marginBottom: "4px", fontSize: "14px" }}>{translations.serverPort}</div>
+        <div style={settingsStyles.fieldContainer}>
+          <div style={settingsStyles.fieldLabel}>{translations.serverPort}</div>
           <TextField
             value={String(settings.port)}
             onChange={(e: any) => {
@@ -136,27 +173,27 @@ export const Settings: FC = () => {
               const val = parseInt(value, 10);
               if (!isNaN(val) && val >= 1024 && val <= 65535) {
                 debouncedSave({ port: val }, true);
-              } else if (value === '' || (!isNaN(val) && val >= 1 && val < 1024)) {
-                // Allow typing, but don't save invalid ports
-                setSettings(prev => ({ ...prev, port: val || 8765 }));
+              } else if (
+                value === "" ||
+                (!isNaN(val) && val >= 1 && val < 1024)
+              ) {
+                setSettings((prev) => ({ ...prev, port: val || 8765 }));
               }
             }}
-            style={{ width: "100%" }}
+            style={settingsStyles.fieldInput}
           />
-          <div style={{ 
-            fontSize: "11px", 
-            color: "#888", 
-            marginTop: "8px",
-            lineHeight: "1.4"
-          }}>
-            {translations.portChangeHint || "Port changes will take effect after restarting the device."}
+          <div style={settingsStyles.fieldHint}>
+            {translations.portChangeHint ||
+              "Port changes will take effect after restarting the device."}
           </div>
         </div>
       </DialogControlsSection>
 
+      <div style={settingsStyles.sectionSpacer} />
+
       <DialogControlsSection>
         <DialogControlsSectionHeader>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <div style={settingsStyles.headerContainer}>
             <FaDatabase />
             {translations.historySettings || "History Settings"}
           </div>
@@ -170,27 +207,25 @@ export const Settings: FC = () => {
         />
 
         {settings.enable_history && (
-          <>
-            <SliderField
-              label={translations.monitorInterval}
-              description={`${settings.monitor_interval} ${translations.seconds}`}
-              value={settings.monitor_interval}
-              min={5}
-              max={60}
-              step={5}
-              onChange={(value) => debouncedSave({ monitor_interval: value })}
+          <div style={settingsStyles.fieldContainer}>
+            <div style={settingsStyles.fieldLabel}>
+              {translations.maxHistory}
+            </div>
+            <TextField
+              value={String(settings.max_history)}
+              onChange={(e: any) => {
+                const value = e?.target?.value ?? e;
+                const val = parseInt(value, 10);
+                if (!isNaN(val) && val >= 1 && val <= 100) {
+                  debouncedSave({ max_history: val });
+                }
+              }}
+              style={settingsStyles.fieldInput}
             />
-
-            <SliderField
-              label={translations.maxHistory}
-              description={`${settings.max_history} ${translations.items}`}
-              value={settings.max_history}
-              min={5}
-              max={50}
-              step={5}
-              onChange={(value) => debouncedSave({ max_history: value })}
-            />
-          </>
+            <div style={settingsStyles.fieldHint}>
+              {`${settings.max_history} ${translations.items}`}
+            </div>
+          </div>
         )}
       </DialogControlsSection>
     </DialogBody>

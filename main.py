@@ -6,14 +6,12 @@ import socket
 import json
 import os
 import base64
-import mimetypes
 import time
-import asyncio
 from pathlib import Path
 from collections import deque
 from typing import List, Dict, Any
 
-from aiohttp import web, WSMsgType
+from aiohttp import web
 
 import decky
 from decky import logger
@@ -29,24 +27,34 @@ SETTINGS_PATH = Path(decky.DECKY_PLUGIN_SETTINGS_DIR) / "settings.json"
 # Default settings
 DEFAULT_SETTINGS = {
     "auto_start": True,
-    "refresh_interval": 3,
     "max_history": 20,
     "port": 8765,
-    "enable_history": False,
-    "monitor_interval": 2
+    "enable_history": False
 }
 
 # Clipboard history storage
 clipboard_history: deque = deque(maxlen=50)
 last_clipboard_content = ""
 
+# IP address cache
+_cached_ip = None
+_cached_ip_time = 0
+_IP_CACHE_TTL = 60  # seconds
+
+# Frontend file cache
+_frontend_cache: Dict[str, str] = {}
+
 
 def get_frontend_file(filename: str) -> str:
     """Load and cache frontend files."""
+    if filename in _frontend_cache:
+        return _frontend_cache[filename]
     file_path = FRONTEND_PATH / filename
     if file_path.exists():
         with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+            content = f.read()
+            _frontend_cache[filename] = content
+            return content
     return ""
 
 
@@ -83,28 +91,30 @@ def add_to_history(content: str, mime_type: str = "text/plain", is_binary: bool 
     
     last_clipboard_content = content
     
-    # Create preview
+    # Create preview and manage memory for large content
     if is_binary and mime_type.startswith("image/"):
-        # For images, preview is the base64 content itself (or a thumbnail if we processed it)
-        # Since we don't have image processing lib, we use the full base64 as preview for now
-        # In a real app we might want to resize it
-        preview = content
+        # For images, truncate preview to first 2KB of base64 (enough for a tiny thumbnail indicator)
+        preview = content[:2048] if len(content) > 2048 else content
+        # Don't store full image content if it's too large (>500KB base64 ≈ 375KB raw)
+        # This prevents 50 large images from consuming hundreds of MB
+        stored_content = content if len(content) <= 512_000 else ""
     else:
         # For text, first 100 chars
         preview = content.replace('\n', ' ').replace('\r', '')[:100]
+        stored_content = content
     
     # Add to history with timestamp
     history_item = {
-        "content": content,
+        "content": stored_content,
         "timestamp": int(time.time()),
         "preview": preview,
         "type": mime_type,
         "is_binary": is_binary
     }
     
-    # Remove duplicate if exists
-    for i, item in enumerate(clipboard_history):
-        if item["content"] == content:
+    # Remove duplicate if exists (iterate from end for safe deletion)
+    for i in range(len(clipboard_history) - 1, -1, -1):
+        if clipboard_history[i]["content"] == content:
             del clipboard_history[i]
             break
     
@@ -112,14 +122,21 @@ def add_to_history(content: str, mime_type: str = "text/plain", is_binary: bool 
 
 
 def get_local_ip():
+    global _cached_ip, _cached_ip_time
+    now = time.monotonic()
+    if _cached_ip and (now - _cached_ip_time) < _IP_CACHE_TTL:
+        return _cached_ip
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
+        _cached_ip = ip
+        _cached_ip_time = now
         return ip
     except:
-        return "127.0.0.1"
+        return _cached_ip or "127.0.0.1"
 
 
 class WebServer:
@@ -133,12 +150,10 @@ class WebServer:
         self._app.router.add_get("/api/clipboard", self._handle_get_clipboard)
         self._app.router.add_post("/api/clipboard", self._handle_set_clipboard)
         self._app.router.add_get("/api/status", self._handle_status)
-        self._app.router.add_get("/api/ws", self._handle_websocket)
         self._runner = None
         self._site = None
         self._html_cache = None
         self._i18n_cache = None
-        self._websockets = set()
     
     async def _handle_index(self, request):
         if self._html_cache is None:
@@ -150,32 +165,6 @@ class WebServer:
             self._i18n_cache = get_frontend_file("i18n.js")
         return web.Response(text=self._i18n_cache, content_type="application/javascript")
 
-    async def _handle_websocket(self, request):
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
-
-        self._websockets.add(ws)
-        try:
-            async for msg in ws:
-                if msg.type == WSMsgType.TEXT:
-                    if msg.data == 'ping':
-                        await ws.send_str('pong')
-                elif msg.type == WSMsgType.ERROR:
-                    logger.error(f'ws connection closed with exception {ws.exception()}')
-        finally:
-            self._websockets.discard(ws)
-        return ws
-
-    async def broadcast(self, data: Dict[str, Any]):
-        if not self._websockets:
-            return
-        for ws in list(self._websockets):
-            try:
-                await ws.send_json(data)
-            except Exception as e:
-                logger.error(f"Failed to send to websocket: {e}")
-                self._websockets.discard(ws)
-    
     async def _handle_get_clipboard(self, request):
         try:
             data = get_clipboard_data()
@@ -253,11 +242,12 @@ class Plugin:
     # Frontend API
     async def get_server_status(self):
         running = self.web_server is not None and self.web_server.is_running
+        ip = get_local_ip()
         return {
             "running": running,
-            "ip": get_local_ip(),
+            "ip": ip,
             "port": self.server_port,
-            "url": f"http://{get_local_ip()}:{self.server_port}",
+            "url": f"http://{ip}:{self.server_port}",
             "clipboard_available": is_clipboard_available()
         }
 
@@ -317,8 +307,7 @@ class Plugin:
             mime_type = data.get("type", "text/plain")
             is_binary = data.get("is_binary", False)
             
-            # Add to history if enabled (even if monitor is slow/disabled, manual refresh triggers save)
-            # But only if history is enabled in settings
+            # Add to history if enabled
             if self.settings.get("enable_history", False) and content:
                 add_to_history(content, mime_type, is_binary)
             
@@ -423,54 +412,8 @@ class Plugin:
         else:
             logger.info("Auto-start disabled, server not started")
 
-        # Start clipboard monitor
-        self._monitor_running = True
-        asyncio.create_task(self._clipboard_monitor())
-
-    async def _clipboard_monitor(self):
-        """Monitor clipboard for changes."""
-        logger.info("Clipboard monitor started")
-        last_content = None
-        
-        while getattr(self, '_monitor_running', False):
-            try:
-                # Check clipboard content
-                data = get_clipboard_data()
-                content = data.get("content", "")
-                mime_type = data.get("type", "text/plain")
-                is_binary = data.get("is_binary", False)
-                
-                # If content changed, broadcast and update history
-                if content != last_content:
-                    last_content = content
-                    
-                    # Broadcast to websockets
-                    if self.web_server and self.web_server.is_running:
-                        # Prepare data for broadcast
-                        broadcast_content = content
-                        if is_binary and content:
-                            broadcast_content = base64.b64encode(content).decode('utf-8') if isinstance(content, bytes) else content
-                            
-                        await self.web_server.broadcast({
-                            "success": True,
-                            "type": mime_type,
-                            "content": broadcast_content,
-                            "is_binary": is_binary
-                        })
-
-                    # Add to history if enabled
-                    if self.settings.get("enable_history", False) and content:
-                        add_to_history(content, mime_type, is_binary)
-            except Exception as e:
-                logger.debug(f"Monitor error: {e}")
-            
-            # Wait before next check
-            interval = self.settings.get("monitor_interval", 2)
-            await asyncio.sleep(max(0.5, interval))
-
     async def _unload(self):
         logger.info("Decky Clipboard unloading...")
-        self._monitor_running = False
         await self.stop_server()
 
     async def _uninstall(self):

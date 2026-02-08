@@ -33,7 +33,7 @@ GAMESCOPE_ENV_FILE = "/run/user/1000/gamescope-environment"
 
 # Timeout constants (seconds)
 TIMEOUT_VERSION_CHECK = 2
-TIMEOUT_TARGETS = 10
+TIMEOUT_TARGETS = 3
 TIMEOUT_TEXT = 15
 TIMEOUT_IMAGE = 45
 
@@ -42,12 +42,14 @@ IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'}
 
 # Text target types in priority order
 TEXT_TARGETS = ['UTF8_STRING', 'text/plain', 'text/uri-list', 'STRING']
+TEXT_TARGETS_SET = frozenset(TEXT_TARGETS)
 
 # Module state
 _xclip_cmd = None
 _initialized = False
 _x11_display = ":0"
 _cached_env = None  # Cached environment variables
+_sudo_prefix = None  # Cached sudo command prefix
 
 
 def _read_gamescope_env() -> None:
@@ -116,6 +118,18 @@ def _init_commands() -> None:
     # Cache environment variables for reuse
     _cached_env = _get_env()
     
+    # Pre-build and cache sudo prefix to avoid rebuilding on every command
+    global _sudo_prefix
+    prefix = ["sudo", "-u", "deck"]
+    env_args = []
+    if "DISPLAY" in _cached_env:
+        env_args = ["env", f"DISPLAY={_cached_env['DISPLAY']}"]
+    if "XAUTHORITY" in _cached_env:
+        env_args.append(f"XAUTHORITY={_cached_env['XAUTHORITY']}")
+    if env_args:
+        prefix.extend(env_args)
+    _sudo_prefix = prefix
+    
     if _xclip_cmd:
         log_info(f"Clipboard initialized with xclip: {_xclip_cmd}")
     else:
@@ -140,19 +154,18 @@ def _run_command(cmd: list, env: dict, input_data: bytes = None,
     Returns (returncode, stdout_bytes, stderr_str)
     """
     if use_sudo:
-        # Use sudo instead of runuser to ensure stdin is handled correctly
-        # Pass environment variables directly to the command
-        final_cmd = ["sudo", "-u", "deck"]
-        
-        # Add environment variables as separate arguments
-        if "DISPLAY" in env:
-            final_cmd.extend(["env", f"DISPLAY={env['DISPLAY']}"])
-        if "XAUTHORITY" in env:
-            final_cmd.append(f"XAUTHORITY={env['XAUTHORITY']}")
-        
-        # Add the actual command
-        final_cmd.extend(cmd)
-        cmd = final_cmd
+        # Use cached sudo prefix for better performance
+        if _sudo_prefix:
+            cmd = _sudo_prefix + cmd
+        else:
+            # Fallback: build prefix inline (should not happen after init)
+            final_cmd = ["sudo", "-u", "deck"]
+            if env and "DISPLAY" in env:
+                final_cmd.extend(["env", f"DISPLAY={env['DISPLAY']}"])
+            if env and "XAUTHORITY" in env:
+                final_cmd.append(f"XAUTHORITY={env['XAUTHORITY']}")
+            final_cmd.extend(cmd)
+            cmd = final_cmd
         env = None  # Don't pass env dict to subprocess when using sudo
     
     stdout_dest = subprocess.PIPE if capture_output else subprocess.DEVNULL
@@ -191,6 +204,11 @@ def _select_text_target(targets: str) -> Optional[str]:
         if target in targets:
             return target
     return None
+
+
+def _has_any_text_target(targets: str) -> bool:
+    """Check if any text target exists in targets string. Faster than _select_text_target for boolean check."""
+    return any(t in targets for t in TEXT_TARGETS)
 
 
 def _read_image_from_uri(uri: str) -> Optional[Dict[str, Union[str, bool]]]:
@@ -241,9 +259,7 @@ def _get_clipboard_targets() -> Optional[str]:
         )
         
         if rc == 0 and out:
-            targets = out.decode('utf-8', errors='ignore')
-            log_debug(f"Clipboard targets: {targets.strip()}")
-            return targets
+            return out.decode('utf-8', errors='ignore')
             
     except Exception as e:
         log_debug(f"Failed to query clipboard targets: {e}")
@@ -272,7 +288,7 @@ def get_clipboard_data() -> Dict[str, Union[str, bool]]:
         
         # Determine what to read based on targets
         has_image = targets and ('image/png' in targets or 'image/jpeg' in targets)
-        has_text = targets and any(t in targets for t in TEXT_TARGETS)
+        has_text = targets and _has_any_text_target(targets)
         
         # If we have image target, try image first (it's likely what user wants)
         if has_image:
@@ -342,7 +358,10 @@ def set_clipboard_data(content: str, mime_type: str = "text/plain", is_base64: b
     
     # Encode data - optimize to avoid unnecessary conversions
     try:
-        data_bytes = base64.b64decode(content) if is_base64 else content.encode('utf-8')
+        if is_base64:
+            data_bytes = base64.b64decode(content)
+        else:
+            data_bytes = content.encode('utf-8') if isinstance(content, str) else content
     except Exception as e:
         log_error(f"Data encoding error: {e}")
         return False

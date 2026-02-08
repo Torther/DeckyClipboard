@@ -16,25 +16,127 @@ import {
   definePlugin,
   toaster,
   routerHook,
-} from "@decky/api"
+} from "@decky/api";
 import { FC, useState, useEffect, useCallback, useRef } from "react";
-import { FaClipboard, FaTrash, FaHistory, FaCog, FaSync, FaExternalLinkAlt, FaImage } from "react-icons/fa";
+import {
+  FaClipboard,
+  FaTrash,
+  FaHistory,
+  FaCog,
+  FaSync,
+  FaExternalLinkAlt,
+  FaImage,
+  FaQrcode,
+} from "react-icons/fa";
 import { QRCodeSVG } from "qrcode.react";
 import { t } from "./i18n";
 import { Settings, History } from "./pages";
 
-// Backend API calls
-const getServerStatus = callable<[], {
-  running: boolean;
-  ip: string;
-  port: number;
-  url: string;
-  clipboard_available: boolean;
-}>("get_server_status");
+// Pre-defined styles to avoid re-creating objects on each render
+const contentStyles = {
+  loadingContainer: {
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: "12px",
+    padding: "20px 0",
+  },
+  qrContainer: {
+    display: "flex",
+    justifyContent: "center",
+    padding: "12px 0",
+    background: "transparent",
+  },
+  buttonContent: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "8px",
+  },
+  imagePreview: {
+    maxWidth: "100%",
+    maxHeight: "120px",
+    objectFit: "contain" as const,
+    borderRadius: "6px",
+    display: "block" as const,
+  },
+  imageContainer: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: "8px",
+    background: "#1a2329",
+    borderRadius: "6px",
+    border: "1px solid #2a3439",
+  },
+  textPreviewFilled: {
+    fontSize: "12px",
+    maxHeight: "80px",
+    overflow: "auto" as const,
+    whiteSpace: "pre-wrap" as const,
+    wordBreak: "break-word" as const,
+    background: "#1a2329",
+    padding: "10px",
+    borderRadius: "6px",
+    border: "1px solid #2a3439",
+    fontFamily: "monospace",
+    color: "#b8c7d0",
+    lineHeight: "1.4",
+  },
+  textPreviewEmpty: {
+    fontSize: "12px",
+    maxHeight: "80px",
+    overflow: "auto" as const,
+    whiteSpace: "pre-wrap" as const,
+    wordBreak: "break-word" as const,
+    background: "#1a2329",
+    padding: "10px",
+    borderRadius: "6px",
+    border: "1px solid #2a3439",
+    fontFamily: "monospace",
+    color: "#666",
+    textAlign: "center" as const,
+    lineHeight: "1.4",
+  },
+  actionRow: {
+    display: "flex",
+    gap: "8px",
+    marginTop: "8px",
+  },
+  actionBtnFlex: {
+    flex: 1,
+  },
+  serverUrlText: {
+    fontSize: "11px",
+    color: "#8ba4b5",
+    fontFamily: "monospace",
+    overflow: "hidden" as const,
+    textOverflow: "ellipsis" as const,
+    whiteSpace: "nowrap" as const,
+  },
+} as const;
 
-const startServer = callable<[], { success: boolean; url?: string; error?: string }>("start_server");
+// Backend API calls
+const getServerStatus = callable<
+  [],
+  {
+    running: boolean;
+    ip: string;
+    port: number;
+    url: string;
+    clipboard_available: boolean;
+  }
+>("get_server_status");
+
+const startServer = callable<
+  [],
+  { success: boolean; url?: string; error?: string }
+>("start_server");
 const stopServer = callable<[], { success: boolean }>("stop_server");
-const getClipboardData = callable<[], { success: boolean; type?: string; content?: string; is_binary?: boolean }>("get_clipboard_data");
+const getClipboardData = callable<
+  [],
+  { success: boolean; type?: string; content?: string; is_binary?: boolean }
+>("get_clipboard_data");
 const clearClipboard = callable<[], { success: boolean }>("clear_clipboard");
 
 // Clipboard content type
@@ -44,18 +146,34 @@ interface ClipboardData {
   isBinary: boolean;
 }
 
+// Utility function - defined at module level to avoid re-creation on each render
+const truncateText = (
+  text: string,
+  emptyText: string,
+  maxLength: number = 100,
+): string => {
+  if (!text) return emptyText;
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength) + "...";
+};
+
 // Sidebar main content
 const Content: FC = () => {
   const [serverRunning, setServerRunning] = useState(false);
   const [serverUrl, setServerUrl] = useState("");
-  const [clipboardData, setClipboardData] = useState<ClipboardData>({ content: "", type: "text/plain", isBinary: false });
+  const [clipboardData, setClipboardData] = useState<ClipboardData>({
+    content: "",
+    type: "text/plain",
+    isBinary: false,
+  });
   const [loading, setLoading] = useState(true);
   const [showQR, setShowQR] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [serverChanging, setServerChanging] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const clearTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+  const isClearingRef = useRef(false);
+
   const translations = t();
 
   const refreshStatus = useCallback(async () => {
@@ -76,7 +194,7 @@ const Content: FC = () => {
         setClipboardData({
           content: result.content || "",
           type: result.type || "text/plain",
-          isBinary: result.is_binary || false
+          isBinary: result.is_binary || false,
         });
       }
     } catch (e) {
@@ -101,13 +219,13 @@ const Content: FC = () => {
           toaster.toast({
             title: translations.serverStarted,
             body: translations.serverStartedBody(result.url || ""),
-            icon: <FaClipboard />
+            icon: <FaClipboard />,
           });
         } else {
           toaster.toast({
             title: translations.serverStartFailed,
             body: translations.serverStartFailedBody(result.error || ""),
-            icon: <FaClipboard />
+            icon: <FaClipboard />,
           });
         }
       } else {
@@ -117,7 +235,7 @@ const Content: FC = () => {
         toaster.toast({
           title: translations.serverStopped,
           body: translations.serverStoppedBody,
-          icon: <FaClipboard />
+          icon: <FaClipboard />,
         });
       }
     } catch (e) {
@@ -128,35 +246,39 @@ const Content: FC = () => {
 
   const handleClearClipboard = useCallback(async () => {
     // Debounce: prevent rapid repeated clicks
-    if (isClearing) return;
-    
+    if (isClearingRef.current) return;
+
     // Clear any pending timeout
     if (clearTimeoutRef.current) {
       clearTimeout(clearTimeoutRef.current);
     }
-    
+
+    isClearingRef.current = true;
     setIsClearing(true);
     try {
       await clearClipboard();
       setClipboardData({ content: "", type: "text/plain", isBinary: false });
+      const currentTranslations = t();
       toaster.toast({
-        title: translations.clipboardCleared,
-        body: translations.clipboardClearedBody,
-        icon: <FaClipboard />
+        title: currentTranslations.clipboardCleared,
+        body: currentTranslations.clipboardClearedBody,
+        icon: <FaClipboard />,
       });
     } catch (e) {
       console.error("Failed to clear clipboard:", e);
+      const currentTranslations = t();
       toaster.toast({
-        title: translations.error || "Error",
+        title: currentTranslations.error || "Error",
         body: String(e),
-        icon: <FaClipboard />
+        icon: <FaClipboard />,
       });
     }
     // Add debounce delay before allowing next clear
     clearTimeoutRef.current = setTimeout(() => {
+      isClearingRef.current = false;
       setIsClearing(false);
     }, 500);
-  }, [isClearing, translations]);
+  }, []);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -164,19 +286,18 @@ const Content: FC = () => {
     setTimeout(() => setIsRefreshing(false), 500);
   };
 
-  const truncateText = (text: string, maxLength: number = 100): string => {
-    if (!text) return translations.empty;
-    if (text.length <= maxLength) return text;
-    return text.substring(0, maxLength) + "...";
-  };
-
   if (loading) {
     return (
-      <PanelSection title={translations.loading}>
+      <PanelSection>
         <PanelSectionRow>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <FaSync className="decky-clipboard-spin" />
-            <span>{translations.initializing}</span>
+          <div style={contentStyles.loadingContainer}>
+            <FaSync
+              className="decky-clipboard-spin"
+              style={{ fontSize: "18px" }}
+            />
+            <span style={{ color: "#8ba4b5", fontSize: "13px" }}>
+              {translations.initializing}
+            </span>
           </div>
         </PanelSectionRow>
       </PanelSection>
@@ -190,7 +311,9 @@ const Content: FC = () => {
         <PanelSectionRow>
           <ToggleField
             label={translations.enableWebInterface}
-            description={serverRunning ? serverUrl : translations.enableWebInterfaceDesc}
+            description={
+              serverRunning ? undefined : translations.enableWebInterfaceDesc
+            }
             checked={serverRunning}
             disabled={serverChanging}
             onChange={toggleServer}
@@ -200,26 +323,34 @@ const Content: FC = () => {
         {serverRunning && (
           <>
             <PanelSectionRow>
-              <ToggleField
-                label={translations.showQR}
-                description={showQR ? "" : translations.showQRDesc || "Scan with phone to connect"}
-                checked={showQR}
-                onChange={setShowQR}
-              />
+              <Field
+                label={
+                  <div style={contentStyles.serverUrlText}>{serverUrl}</div>
+                }
+                focusable
+                onClick={() => Navigation.NavigateToExternalWeb(serverUrl)}
+                icon={<FaExternalLinkAlt style={{ fontSize: "12px" }} />}
+              >
+                <FaQrcode
+                  style={{
+                    fontSize: "14px",
+                    cursor: "pointer",
+                    opacity: showQR ? 1 : 0.5,
+                  }}
+                  onClick={(e: React.MouseEvent) => {
+                    e.stopPropagation();
+                    setShowQR(!showQR);
+                  }}
+                />
+              </Field>
             </PanelSectionRow>
 
             {showQR && (
               <PanelSectionRow>
-                <div style={{ 
-                  display: "flex", 
-                  justifyContent: "center", 
-                  padding: "16px",
-                  background: "transparent",
-                  borderRadius: "8px"
-                }}>
-                  <QRCodeSVG 
+                <div style={contentStyles.qrContainer}>
+                  <QRCodeSVG
                     value={serverUrl}
-                    size={160}
+                    size={140}
                     bgColor="transparent"
                     fgColor="#32373D"
                     level="M"
@@ -227,20 +358,6 @@ const Content: FC = () => {
                 </div>
               </PanelSectionRow>
             )}
-
-            <PanelSectionRow>
-              <ButtonItem
-                layout="below"
-                onClick={() => {
-                  Navigation.NavigateToExternalWeb(serverUrl);
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-                  <FaExternalLinkAlt />
-                  {translations.openInBrowser || "Open in Browser"}
-                </div>
-              </ButtonItem>
-            </PanelSectionRow>
           </>
         )}
       </PanelSection>
@@ -254,64 +371,60 @@ const Content: FC = () => {
             focusable
             onClick={handleRefresh}
           >
-            <FaSync 
-              style={{ 
+            <FaSync
+              style={{
                 fontSize: "12px",
-                animation: isRefreshing ? "spin 0.5s linear infinite" : "none"
-              }} 
+                animation: isRefreshing ? "spin 0.5s linear infinite" : "none",
+              }}
             />
           </Field>
         </PanelSectionRow>
-        <div style={{ height: "8px" }} />
+
         <PanelSectionRow>
-          {clipboardData.isBinary && clipboardData.type?.startsWith("image/") ? (
-            <div style={{ display: "flex", justifyContent: "center", alignItems: "center", flex: 1 }}>
-              <img 
+          {clipboardData.isBinary &&
+          clipboardData.type?.startsWith("image/") ? (
+            <div style={contentStyles.imageContainer}>
+              <img
                 src={`data:${clipboardData.type};base64,${clipboardData.content}`}
                 alt="Clipboard Image"
-                style={{ 
-                  maxWidth: "100%",
-                  maxHeight: "150px",
-                  objectFit: "contain",
-                  borderRadius: "8px",
-                  display: "block"
-                }}
+                style={contentStyles.imagePreview}
               />
             </div>
           ) : (
-            <div style={{ 
-              fontSize: "12px", 
-              color: clipboardData.content ? "#b8c7d0" : "#666",
-              maxHeight: "100px",
-              overflow: "auto",
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              background: "#1a2329",
-              padding: "10px",
-              borderRadius: "6px",
-              border: "1px solid #2a3439",
-              fontFamily: "monospace"
-            }}>
-              {truncateText(clipboardData.content)}
+            <div
+              style={
+                clipboardData.content
+                  ? contentStyles.textPreviewFilled
+                  : contentStyles.textPreviewEmpty
+              }
+            >
+              {truncateText(clipboardData.content, translations.empty)}
             </div>
           )}
         </PanelSectionRow>
+
         <PanelSectionRow>
           <ButtonItem
             layout="below"
             onClick={handleClearClipboard}
             disabled={!clipboardData.content || isClearing}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
-              {isClearing ? <FaSync className="decky-clipboard-spin" /> : <FaTrash />}
-              {isClearing ? (translations.clearing || "Clearing...") : translations.clear}
+            <div style={contentStyles.buttonContent}>
+              {isClearing ? (
+                <FaSync className="decky-clipboard-spin" />
+              ) : (
+                <FaTrash />
+              )}
+              {isClearing
+                ? translations.clearing || "Clearing..."
+                : translations.clear}
             </div>
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
 
-      {/* Quick Actions */}
-      <PanelSection title={translations.quickActions || "Quick Actions"}>
+      {/* Navigation */}
+      <PanelSection>
         <PanelSectionRow>
           <ButtonItem
             layout="below"
@@ -320,7 +433,7 @@ const Content: FC = () => {
               Router.Navigate("/decky-clipboard/history");
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+            <div style={contentStyles.buttonContent}>
               <FaHistory />
               {translations.tabHistory}
             </div>
@@ -334,7 +447,7 @@ const Content: FC = () => {
               Router.Navigate("/decky-clipboard/settings");
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}>
+            <div style={contentStyles.buttonContent}>
               <FaCog />
               {translations.tabSettings}
             </div>
@@ -358,7 +471,7 @@ const Content: FC = () => {
 // Router component for settings pages
 const DeckyClipboardRouter: FC = () => {
   const translations = t();
-  
+
   return (
     <SidebarNavigation
       title="Decky Clipboard"
@@ -392,7 +505,7 @@ export default definePlugin(() => {
     toaster.toast({
       title: translations.serverReady,
       body: translations.serverReadyBody(url),
-      icon: <FaClipboard />
+      icon: <FaClipboard />,
     });
   });
 
